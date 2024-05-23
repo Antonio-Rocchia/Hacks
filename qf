@@ -205,7 +205,7 @@ __save_to_list() {
 }
 
 #######################################
-# Save string to the list for a custom command.
+# Delete string to the list for a custom command.
 # Arguments:
 #   Custom command (Must be an existing custom command)
 # Output:
@@ -280,6 +280,7 @@ _tmux() {
     if git -C "${path}" rev-parse &>/dev/null; then
       projects+=("${path}")
     else
+      projects+=("${path}")
       for subdir in "${path}"/*/; do
         if git -C "${subdir}" rev-parse &>/dev/null; then
           projects+=("${subdir}")
