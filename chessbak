@@ -1,0 +1,8 @@
+#!/bin/bash
+
+if ! [[ -d "${HOME}"/Documenti/Scacchi/Analisi ]]; then
+  mkdir -p "${HOME}"/Documenti/Scacchi/Analisi
+fi
+
+mv "${HOME}"/Scaricati/*.pgn "${HOME}"/Documenti/Scacchi/Analisi/
+exit $?
