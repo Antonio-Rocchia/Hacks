@@ -1,8 +1,177 @@
 #!/bin/bash
+set -o pipefail
+set -o nounset
+set -o errexit
 
-if ! [[ -d "${HOME}"/Documenti/Scacchi/Analisi ]]; then
-  mkdir -p "${HOME}"/Documenti/Scacchi/Analisi
+# readonly chess_home="${CHESS_HOME:-$(xdg-user-dir DOCUMENTS)/Scacchi}"
+program_name="$(basename "$0")"
+readonly program_name
+
+output_dir=
+verbose="false"
+force="false"
+positional_args=()
+date_start_iso8601=
+date_end_iso8601=
+date_start=
+date_end=
+chesscom_username=
+output_file_path=
+
+print_help() {
+  cat <<HELP >&2
+$program_name Download chess games from chess.com
+usage: "$program_name" [OPTIONS] USERNAME START_DATE END_DATE
+
+By default the output depends on the chess.com api. 
+chess.com docs: https://www.chess.com/news/view/published-data-api#pubapi-endpoint-games-archive
+
+The output is printed to stdout, by using the [-d | --dir DIR] option you can write the output to a file.
+The default file name will be ${program_name}_ISO8601-START-DATE_ISO8601-END-DATE.json (eg. ). At the moment this can't be changed.
+
+ARGUMENTS:
+  USERNAME      Chess.com username
+  START_DATE    Date from which to start downloading games (inclusive)
+  END_DATE      Date at which to stop downloading games (inclusive)
+
+OPTIONS:
+  -h | --help                Print help message
+  -d | --dir DIR             Download games to DIR
+  -v | --verbose             Enable verbose output
+  -f | --force               Delete backup file if it already exists and download games again
+HELP
+}
+
+print_error() {
+  cat <<ERROR >&2
+
+error: $1
+
+Try $ ${program_name} --help
+ERROR
+}
+
+#######################################
+# Download games from chess.com using their public api
+# Globals:
+#   chesscom_username
+#   year (4 digits)
+#   month (2 digits)
+#   verbose
+#   output_file_path
+#######################################
+download_chesscom_games() {
+  if [[ "${verbose}" = "true" ]]; then
+    printf "\nDownloading: https://api.chess.com/pub/player/%s/games/%s/%s" "${chesscom_username}" "${year}" "${month}"
+  fi
+
+  if [[ -n "${output_dir}" ]]; then 
+    curl -s https://api.chess.com/pub/player/"${chesscom_username}"/games/"${year}"/"${month}" | jq . >> "${output_file_path}"
+  else
+    curl -s https://api.chess.com/pub/player/"${chesscom_username}"/games/"${year}"/"${month}" | jq .
+  fi
+}
+
+if [[ "$#" -eq 0 ]]; then
+  print_help
+  exit 0
 fi
 
-mv "${HOME}"/Scaricati/*.pgn "${HOME}"/Documenti/Scacchi/Analisi/
-exit $?
+while (($#)); do
+  case "$1" in
+    -h|--help)
+      print_help
+      exit 0
+      ;;
+    -d|--dir)
+      if [[ "$2" ]]; then
+        output_dir="$2"
+        shift
+      else
+        print_error "$1 requires an argument DIR"
+        exit 1
+      fi
+      ;;
+    -v|--verbose)
+      verbose="true"
+      ;;
+    -f|--force)
+      force="true"
+      ;;
+    -?*)
+      echo "warning: ignoring unrecognized option $1" >&2
+      ;;
+    *)
+      positional_args+=( "$1" )
+      ;;
+  esac
+
+  shift
+done
+
+if [[ -z "${positional_args[0]+x}" ]]; then
+  print_error "USERNAME is required"
+  exit 1
+fi
+
+if [[ -z "${positional_args[1]+x}" ]]; then
+  print_error "START_DATE is required"
+  exit 1
+fi
+
+if [[ -z "${positional_args[2]+x}" ]]; then
+  print_error "END_DATE is required"
+  exit 1
+fi
+
+chesscom_username="${positional_args[0]}"
+date_start_iso8601="$(date --iso-8601 --date "${positional_args[1]}")"
+date_end_iso8601="$(date --iso-8601 --date "${positional_args[2]}")"
+
+IFS="-" read -r -a date_start <<< "${date_start_iso8601}"
+IFS="-" read -r -a date_end <<< "${date_end_iso8601}"
+
+
+if [[ "${verbose}" = "true" ]]; then
+  printf "Downloading games for %s on chess.com...\nTime range from: %s to %s\n" "${chesscom_username}" "${date_start_iso8601}" "${date_end_iso8601}"
+fi
+
+if [[ -n "${output_dir}" ]]; then 
+  output_file_path="${output_dir}/${program_name}_${date_start_iso8601}_${date_end_iso8601}.json"
+
+  if [[ "${verbose}" = "true" ]]; then 
+    printf "Saving result in: %s\n" "${output_file_path}"
+  fi
+
+  if [[ "${force}" = "false" && -f  "${output_file_path}" ]]; then
+    print_error "the file ${output_file_path} already exists." 
+    exit 1
+  fi
+
+  rm -f "${output_file_path}"
+fi
+
+
+if [[ -n "${date_start[*]}" && -n "${date_end[*]}" ]]; then
+  for year in $(seq --equal-width "${date_start[0]}" "${date_end[0]}"); do 
+    if [[ $year -eq "${date_start[0]}" && $year -eq "${date_end[0]}" ]]; then
+      for month in $(seq --equal-width "${date_start[1]}" "${date_end[1]}"); do 
+        download_chesscom_games 
+      done
+    elif [[ $year -ne "${date_start[0]}" && $year -eq "${date_end[0]}" ]]; then
+      for month in $(seq --equal-width 1 "${date_end[1]}"); do 
+        download_chesscom_games 
+      done
+    elif [[ $year -eq "${date_start[0]}" && $year -ne "${date_end[0]}" ]]; then
+      for month in $(seq --equal-width "${date_start[1]}" 12); do 
+        download_chesscom_games 
+      done
+    else
+      for month in {01..12}; do
+        download_chesscom_games 
+      done
+    fi
+  done
+fi
+
+
