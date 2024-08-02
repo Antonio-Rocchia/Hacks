@@ -3,7 +3,6 @@ set -o pipefail
 set -o nounset
 set -o errexit
 
-# readonly chess_home="${CHESS_HOME:-$(xdg-user-dir DOCUMENTS)/Scacchi}"
 program_name="$(basename "$0")"
 readonly program_name
 
