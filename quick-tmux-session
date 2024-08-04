@@ -1,0 +1,29 @@
+#!/bin/bash
+
+common_dirs=(
+  ~/Sviluppo/Progetti \
+)
+select_dir=
+
+if [[ "$#" -eq 1 ]]; then
+  select_dir="$1"
+else
+  select_dir="$(find "${common_dirs[@]}" -mindepth 1 -maxdepth 1 -type d | fzf)"
+fi
+
+if [[ -z "$select_dir" ]]; then
+  exit 0
+fi
+
+select_dir_name="$(basename "${select_dir}")"
+
+if [[ -z "$TMUX" ]] && [[ -z "$(pgrep tmux)" ]]; then
+  tmux new-session -s "${select_dir_name}" -c "${select_dir}"
+  exit 0
+fi
+
+if ! tmux has-session -t "${select_dir}" 2> /dev/null; then
+  tmux new-session -d -s "${select_dir_name}" -c "${select_dir}"
+fi
+
+tmux switch-client -t "${select_dir_name}"
